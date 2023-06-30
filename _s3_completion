@@ -1,0 +1,84 @@
+# if [ -f $(brew --prefix)/etc/bash_completion ]; then
+#   . $(brew --prefix)/etc/bash_completion
+# fi
+_s3()
+{
+  # COMP_WORDBREAKS=${COMP_WORDBREAKS//:}
+  let i=0
+  let command_count=0
+  let s3_sub_command_index=0
+  for word in ${COMP_WORDS[@]}; do
+    if [ $word = '--profile' ];then
+      PROFILE_NAME=${COMP_WORDS[$((i+1))]}
+      let command_count--
+    elif [[ $word =~ ^[^-]  ]];then
+      let command_count++
+    fi
+    if [ $command_count = 2 -a $s3_sub_command_index = 0 ];then
+      s3_sub_command_index=$i
+    fi
+    let i++
+  done
+
+  # echo $s3_sub_command_index
+  # echo ${COMP_WORDS[${s3_sub_command_index}]}
+  # echo ${COMP_CWORD}
+  # echo ${COMP_WORDS[${COMP_CWORD}]}
+  # echo $PROFILE_NAME 
+  # return
+
+  # s3_sub_commands=$(ls ~/.s3_completion/command/s3/)
+  # if [ $sub_command_index != 0 ];then
+  #   sub_commands=$(ls ~/.s3_completion/command/${COMP_WORDS[${s3_sub_command_index}]}/)
+  # fi
+
+  # profile completion
+  cur_word=${COMP_WORDS[${COMP_CWORD}]}
+  prev_word=${COMP_WORDS[${COMP_CWORD}-1]}
+  prev2_word=${COMP_WORDS[${COMP_CWORD}-2]}
+  prev3_word=${COMP_WORDS[${COMP_CWORD}-3]}
+  input_s3path=$prev2_word$prev_word$cur_word
+  if [ ${prev_word} = "--profile" ];then
+    local profile_names
+    profile_names=$(cat ~/.aws/credentials | grep "\[.*\]" | cut -c 2- | rev | cut -c 2- | rev)
+    COMPREPLY=( $(compgen -W "${profile_names}" -- "${cur_word}") )
+  # s3path completion
+  elif [[ $input_s3path =~ ^(s3://.*)/  ]];then
+    local aws_command child_objs cur
+    only_s3path="${input_s3path%/*}"/
+    hist_file="/root/.s3_completion/history/${only_s3path//\//%}"
+    if [ -e $hist_file ];then
+      child_objs=$(cat $hist_file | xargs -I {} echo $only_s3path{})
+    else
+      aws_command="s3 --profile $PROFILE_NAME ls ${input_s3path}"
+      child_objs=$(${aws_command} 2>/dev/null | head -n 100 | awk -v s3_path=$BASH_REMATCH '{print s3_path$NF; fflush()}')
+      #child_objs=$(${aws_command} 2>/dev/null | head -n 100 | awk '{print $NF; fflush()}')
+      #cur=$(echo "${COMP_WORDS[${COMP_CWORD}]}" | awk -F '/'  '{print $NF}')
+    fi
+    COMPREPLY=( $(compgen -W "${child_objs}" -- $input_s3path) )
+    __ltrim_colon_completions "$input_s3path"
+    compopt -o nospace
+  # s3bucket completion
+  elif [[ $input_s3path = "s3://" ]];then
+    bucket_paths=$(ls ~/.s3_completion/profile/$PROFILE_NAME/bucket/ | awk '{print "//"$0"/"}')
+    COMPREPLY=( $(compgen -W "${bucket_paths}" -- "${cur_word}" |  sed -e  's/^s3://' ) )
+    compopt -o nospace
+  # option completion
+  elif [[ ${cur_word} =~ ^-- ]];then
+    local options
+    #options=$(aws help | grep '\-\-' | sed 's/(.*)//g' | sed 's/^ *//g')
+    options="--debug --endpoint-url --no-verify-ssl --no-paginate --output --query --profile --region --version --color --no-sign-request --ca-bundle --cli-read-timeout --cli-connect-timeout --cli-binary-format --no-cli-pager --cli-auto-prompt --no-cli-auto-prompt"
+    COMPREPLY=( $(compgen -W "${options}" -- "${COMP_WORDS[${COMP_CWORD}]}") )
+  # command completion
+  # elif [ $s3_sub_command_index = ${COMP_CWORD} -o $s3_sub_command_index = 0 ];then
+  #  COMPREPLY=( $(compgen -W "${s3_sub_commands}" -- "${COMP_WORDS[${COMP_CWORD}]}") )
+  # subcommand completion
+  # elif [ $sub_command_index = ${COMP_CWORD} -o $sub_command_index = 0 ];then
+  #  COMPREPLY=( $(compgen -W "${sub_commands}" -- "${COMP_WORDS[${COMP_CWORD}]}") )
+  else
+    _filedir
+  fi
+}
+
+complete -F _s3 s3
+

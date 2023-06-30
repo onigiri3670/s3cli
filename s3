@@ -1,0 +1,33 @@
+#!/bin/bash
+histdir=~/.s3_completion/history
+args=$@
+index=0
+subcommand=""
+prevarg=""
+
+for arg in $args; do
+  # echo "$index: $arg"
+  if [[ $arg =~ ^[^-] ]] && [[ $prevarg =~ ^[^-] ]] && [ "$subcommand" != "" ]; then
+   lastpath=$arg
+  fi
+  if [ $arg = "ls" ]; then
+    subcommand=$arg 
+  fi
+  #if [ $arg = '--profile' ];then
+  #fi
+  index=$(($index+1))
+  prevarg=$arg
+done
+
+
+result=$(aws s3 $*)
+echo "$result"
+if [ "$subcommand" = "ls" ]; then
+  s3prefix=$lastpath
+  if [[ $s3prefix =~ \/$ ]]; then
+    histstr=$(echo "$result" | grep -E '^\s*PRE' | awk '{print $2}') 
+    if [ -n "$histstr" ]; then
+      echo "$histstr"> $histdir/${s3prefix//\//%}
+    fi
+  fi
+fi
